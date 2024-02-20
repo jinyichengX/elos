@@ -7,7 +7,7 @@
 
 /* 初始化信号量 */
 void EL_Lite_Semaphore_Init(lite_sem_t * sem,\
-						EL_UCHAR val)
+					EL_UCHAR val)
 {
     sem->Sem_value = val;
 	sem->Max_value = val;
@@ -16,13 +16,14 @@ void EL_Lite_Semaphore_Init(lite_sem_t * sem,\
 
 /* 初始化锁 */
 void EL_Mutex_Lock_Init(mutex_lock_t* lock,\
-					EL_UCHAR lock_attr)
+					mutex_lock_attr_t lock_attr)
 {
 	if(NULL == lock) return;
-	lock->Lock_attr = lock_attr;
 	
-	lock->Owner = (EL_PTCB_T *)0;
 	lock->Lock_nesting = 0;
+	lock->Owner_orig_prio = 0xff;
+	lock->Lock_attr = lock_attr;
+	lock->Owner = (EL_PTCB_T *)0;
 	EL_Lite_Semaphore_Init(&lock->Semaphore,1);
 }
 
@@ -31,11 +32,11 @@ EL_RESULT_T EL_Lite_Semaphore_Proberen(lite_sem_t * sem,\
 					EL_UINT timeout_tick)
 {
 	Suspend_t *SuspendObj;
+	
 	OS_Enter_Critical_Check();
 	EL_PTCB_T * Cur_ptcb = EL_GET_CUR_PTHREAD();
-	while(sem->Sem_value == 0){
-		/* 等待队列不应为空且当前线程不在等待队列 */
-//		ASSERT(!list_find(&EL_GET_CUR_PTHREAD()->pthread_node,&sem->Waiters));
+	while(sem->Sem_value == 0)
+	{
 		ASSERT(Cur_ptcb->pthread_state != EL_PTHREAD_SUSPEND);
 		/* 将线程放入等待队列 */
 		list_add_tail(&EL_GET_CUR_PTHREAD()->pthread_node,\
@@ -46,8 +47,8 @@ EL_RESULT_T EL_Lite_Semaphore_Proberen(lite_sem_t * sem,\
 			return EL_RESULT_ERR;
 		}
 		SuspendObj->Pthread = Cur_ptcb;
-		Cur_ptcb->block_holder = (void *)SuspendObj;
 		SuspendObj->PendingType = (void *)0;
+		Cur_ptcb->block_holder = (void *)SuspendObj;
 		EL_Pthread_PushToSuspendList(Cur_ptcb,\
 					&SuspendObj->Suspend_Node);
 
@@ -58,8 +59,8 @@ EL_RESULT_T EL_Lite_Semaphore_Proberen(lite_sem_t * sem,\
 		OS_Enter_Critical_Check();
 	}
 	sem->Sem_value --;
-	
 	OS_Exit_Critical_Check();
+
 	return EL_RESULT_OK;
 }
 
@@ -83,6 +84,12 @@ EL_RESULT_T EL_MutexLock_Take(mutex_lock_t* lock)
 			return EL_RESULT_OK;
 		}
 	}
+	/* 如果当前线程优先级大于锁拥有者线程的优先级，则使低优先级线程继承当前线程优先级 */
+    if (lock->Owner && Cur_ptcb->pthread_prio > lock->Owner->pthread_prio) {
+        /* 提升等待锁的线程的优先级至当前锁的持有者的优先级 */
+		lock->Owner_orig_prio = lock->Owner->pthread_prio;
+        EL_Pthread_Priority_Set(lock->Owner, Cur_ptcb->pthread_prio);
+    }
 	OS_Exit_Critical_Check();
 	EL_Lite_Semaphore_Proberen(&lock->Semaphore,0);
 	OS_Enter_Critical_Check();
@@ -91,7 +98,9 @@ EL_RESULT_T EL_MutexLock_Take(mutex_lock_t* lock)
 	/* 设置锁的拥有者为当前线程 */
 	SET_MUTEX_OWNER(lock,Cur_ptcb);
 
+	lock->Owner_orig_prio = Cur_ptcb->pthread_prio;
 	OS_Exit_Critical_Check();
+
 	return EL_RESULT_OK;
 }
 
@@ -99,11 +108,12 @@ EL_RESULT_T EL_MutexLock_Take(mutex_lock_t* lock)
 EL_RESULT_T EL_Lite_Semaphore_Verhogen(lite_sem_t * sem)
 {
 	LIST_HEAD * WaiterToRemove;
+
 	OS_Enter_Critical_Check();
-	
 	/* 唤醒等待队列中的第一个线程 */
 	if(!list_empty(&sem->Waiters)){
-		ASSERT(((EL_PTCB_T *)sem->Waiters.next)->pthread_state == EL_PTHREAD_SUSPEND);
+		ASSERT(((EL_PTCB_T *)sem->Waiters.next)\
+		->pthread_state == EL_PTHREAD_SUSPEND);
 		/* 释放第一个等待信号量的线程 */
 		WaiterToRemove = sem->Waiters.next;
 		list_del((LIST_HEAD *)sem->Waiters.next);
@@ -111,8 +121,8 @@ EL_RESULT_T EL_Lite_Semaphore_Verhogen(lite_sem_t * sem)
 	}
 	sem->Sem_value ++;
 	ASSERT(sem->Sem_value <= sem->Max_value);
-	
 	OS_Exit_Critical_Check();
+
 	return EL_RESULT_OK;
 }
 
@@ -141,15 +151,18 @@ EL_RESULT_T EL_MutexLock_Release(mutex_lock_t* lock)
 		}
 	}
 	ASSERT(lock->Lock_nesting == 0);
+	/* 恢复当前线程原优先级 */
+	if(lock->Owner_orig_prio != Cur_ptcb->pthread_prio){
+		Cur_ptcb->pthread_prio = lock->Owner_orig_prio;
+	}
 	/* 重置锁的拥有者 */
 	SET_MUTEX_OWNER(lock,(EL_PTCB_T *)0);
 	OS_Exit_Critical_Check();
 //	OS_Enter_Critical_Check();
-//		ASSERT(lock->Semaphore.Sem_value == 1);
+//	ASSERT(lock->Semaphore.Sem_value == 1);
 //	OS_Exit_Critical_Check();
-
 	EL_Lite_Semaphore_Verhogen(&lock->Semaphore);
-	
+
 	return EL_RESULT_OK;
 }
 

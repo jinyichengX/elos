@@ -42,6 +42,12 @@ typedef enum{
 	EL_PTHREAD_MUTEX_PEND
 }PendType_t;
 
+/* 线程同步互斥组占用标志 */
+#define EL_PTHREAD_NONE_WAIT 0x0000	  /* 无等待 */
+#define EL_PTHREAD_SEMAP_WAIT 0x00001 /* 等待信号量释放 */
+#define EL_PTHREAD_MUTEX_WAIT 0x00002 /* 等待互斥锁释放 */
+#define EL_PTHREAD_SPEEDPIPE_WAIT 0x0004 /* 等待高速队列可用 */
+
 /* 线程控制块 */
 typedef struct EL_PTHREAD_CONTROL_BLOCK
 {
@@ -57,6 +63,7 @@ typedef struct EL_PTHREAD_CONTROL_BLOCK
 #endif
 	EL_UINT pthread_id;/* 线程id */
 	void * block_holder;/* 被持有对象的节点 */
+	EL_UINT PendFlags;/* 同步互斥组阻塞标志 */
 }EL_PTCB_T;
 
 typedef struct EL_OS_AbsolutePendingTickCount
@@ -80,6 +87,8 @@ typedef struct EL_OS_SuspendStruct
 #define STATICSP_POS FPOS(EL_PTCB_T,pthread_sp) /* 线程私有sp在线程控制块中的偏移 */
 #define PTCB_BASE(PRIV_PSP) ( (EL_PTCB_T *)((EL_PORT_STACK_TYPE)PRIV_PSP-STATICSP_POS) )/* 线程控制块基地址（指针） */
 #define EL_GET_CUR_PTHREAD() PTCB_BASE(g_pthread_sp)/* 获取当前线程控制块（指针） */
+#define SZ_Suspend_t sizeof(Suspend_t)
+
 extern EL_RESULT_T EL_Pthread_Create(EL_PTCB_T *ptcb,const char * name,void *pthread_entry,EL_UINT pthread_stackSz,EL_PTHREAD_PRIO_TYPE pthread_prio);
 extern void EL_OS_Start_Scheduler(void);
 extern void EL_PrioListInitialise(void);
@@ -87,6 +96,8 @@ extern void EL_OS_Initialise(void);
 extern void EL_Pthread_Sleep(EL_UINT TickToDelay);
 extern EL_RESULT_T EL_Pthread_Suspend(EL_PTCB_T *PthreadToSuspend);
 extern void EL_Pthread_Resume(EL_PTCB_T *PthreadToResume);
+extern void EL_Pthread_PushToSuspendList(EL_PTCB_T * ptcb,LIST_HEAD * SuspendList);
+extern void EL_Pthread_Priority_Set(EL_PTCB_T *PthreadToModify,EL_PTHREAD_PRIO_TYPE new_prio);
 extern void EL_TickIncCount(void);
 extern void EL_Pthread_Pend_Release(void);
 extern EL_PTCB_T* EL_Pthread_DelSelf(EL_PTCB_T *PthreadToDel);
