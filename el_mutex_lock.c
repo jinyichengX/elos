@@ -5,7 +5,17 @@
 #define SET_MUTEX_OWNER(P_MUT,P_PTCB)\
 	   (P_MUT->Owner = P_PTCB)
 
-/* 初始化信号量 */
+/**********************************************************************
+ * 函数名称： EL_Mutex_Lock_Init
+ * 功能描述： 初始化一个信号量
+ * 输入参数： sem : 已创建的信号量对象
+             val : 信号量计数
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/14	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_Lite_Semaphore_Init(lite_sem_t * sem,\
 					EL_UCHAR val)
 {
@@ -13,8 +23,17 @@ void EL_Lite_Semaphore_Init(lite_sem_t * sem,\
 	sem->Max_value = val;
 	INIT_LIST_HEAD(&sem->Waiters);
 }
-
-/* 初始化锁 */
+/**********************************************************************
+ * 函数名称： EL_Mutex_Lock_Init
+ * 功能描述： 初始化一个锁对象
+ * 输入参数： lock : 已创建的锁对象
+             lock_attr : 锁属性
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/14	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_Mutex_Lock_Init(mutex_lock_t* lock,\
 					mutex_lock_attr_t lock_attr)
 {
@@ -27,7 +46,17 @@ void EL_Mutex_Lock_Init(mutex_lock_t* lock,\
 	EL_Lite_Semaphore_Init(&lock->Semaphore,1);
 }
 
-/* 获取信号量 */
+/**********************************************************************
+ * 函数名称： EL_Lite_Semaphore_Proberen
+ * 功能描述： 获取信号量
+ * 输入参数： sem : 已创建的锁对象
+             timeout_tick : 超时等待计数
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/14	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 EL_RESULT_T EL_Lite_Semaphore_Proberen(lite_sem_t * sem,\
 					EL_UINT timeout_tick)
 {
@@ -64,7 +93,16 @@ EL_RESULT_T EL_Lite_Semaphore_Proberen(lite_sem_t * sem,\
 	return EL_RESULT_OK;
 }
 
-/* 获取锁 */
+/**********************************************************************
+ * 函数名称： EL_MutexLock_Take
+ * 功能描述： 获取互斥锁
+ * 输入参数： lock : 已创建的锁对象
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/14	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 EL_RESULT_T EL_MutexLock_Take(mutex_lock_t* lock)
 {
 	/* 获取当前线程 */
@@ -103,8 +141,16 @@ EL_RESULT_T EL_MutexLock_Take(mutex_lock_t* lock)
 
 	return EL_RESULT_OK;
 }
-
-/* 释放信号量 */
+/**********************************************************************
+ * 函数名称： EL_Lite_Semaphore_Verhogen
+ * 功能描述： 释放信号量
+ * 输入参数： sem : 已创建的信号量对象
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/14	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 EL_RESULT_T EL_Lite_Semaphore_Verhogen(lite_sem_t * sem)
 {
 	LIST_HEAD * WaiterToRemove;
@@ -125,8 +171,16 @@ EL_RESULT_T EL_Lite_Semaphore_Verhogen(lite_sem_t * sem)
 
 	return EL_RESULT_OK;
 }
-
-/* 释放锁 */
+/**********************************************************************
+ * 函数名称： EL_MutexLock_Release
+ * 功能描述： 释放互斥锁
+ * 输入参数： lock : 已创建的锁对象
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/14	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 EL_RESULT_T EL_MutexLock_Release(mutex_lock_t* lock)
 {
 	/* 获取当前线程 */
@@ -158,21 +212,27 @@ EL_RESULT_T EL_MutexLock_Release(mutex_lock_t* lock)
 	/* 重置锁的拥有者 */
 	SET_MUTEX_OWNER(lock,(EL_PTCB_T *)0);
 	OS_Exit_Critical_Check();
-//	OS_Enter_Critical_Check();
-//	ASSERT(lock->Semaphore.Sem_value == 1);
-//	OS_Exit_Critical_Check();
 	EL_Lite_Semaphore_Verhogen(&lock->Semaphore);
 
 	return EL_RESULT_OK;
 }
-
-/* 销毁锁 */
-void EL_Pthread_Mutex_Deinit(mutex_lock_t* lock)
+/**********************************************************************
+ * 函数名称： EL_MutexLock_Deinit
+ * 功能描述： 销毁互斥锁
+ * 输入参数： lock : 已创建的锁对象
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/14	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
+EL_RESULT_T EL_MutexLock_Deinit(mutex_lock_t* lock)
 {
-	lock->Semaphore.Max_value = 0;
-	lock->Semaphore.Sem_value = 0;
-	lock->Lock_attr = MUTEX_LOCK_INVALID;
-	lock->Owner = (EL_PTCB_T *)0;
-	lock->Lock_nesting = 0;
-	INIT_LIST_HEAD(&lock->Semaphore.Waiters);
+	if(!(lock->Lock_attr & MUTEX_LOCK_INVALID))
+		return EL_RESULT_ERR;
+	/* 先获取锁 */
+	EL_MutexLock_Take(lock);
+	EL_Mutex_Lock_Init(lock);
+	lock->Lock_attr |= MUTEX_LOCK_INVALID;
+	return EL_RESULT_OK;
 }

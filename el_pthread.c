@@ -2,24 +2,20 @@
 #include <string.h>
 #include "el_timer.h"
 #include "el_debug.h"
-EL_PORT_STACK_TYPE g_psp;/* 私有psp的值 */
-EL_PORT_STACK_TYPE **g_pthread_sp;/* 线程私有psp在内存中的地址 */
 
-static EL_UINT g_pthread_pid = 0;/* 用于线程ID分配 */
-
-static EL_UCHAR EL_OS_Scheduling = 0;/* 调度标志? */
 /* 内核列表 */
 LIST_HEAD_CREAT(*KERNEL_LIST_HEAD[EL_PTHREAD_STATUS_COUNT]);/* 内核列表指针 */
 LIST_HEAD_CREAT(PRIO_LISTS[EL_MAX_LEVEL_OF_PTHREAD_PRIO]);/* 线程就绪列表00 */
 LIST_HEAD_CREAT(PthreadToSuspendListHead);/* 线程挂起列表03 */
 LIST_HEAD_CREAT(PthreadToDeleteListHead);/* 线程删除列表 */
 LIST_HEAD_CREAT(PendListHead);/* 线程阻塞延时列表02 */
+
 /* 内核相关宏 */
 #define SZ_TickPending_t sizeof(TickPending_t)
-#define PTHREAD_STATUS_SET(PRIV_PSP,STATE) (PTCB_BASE(PRIV_PSP)->pthread_state = STATE)/* 设置线程状态 */
+#define PTHREAD_STATUS_SET(PRIV_PSP,STATE) (PTCB_BASE(PRIV_PSP)->pthread_state = STATE)/* 设置线程状态(由psp) */
+#define PTHREAD_STATUS_GET(PRIV_PSP) (PTCB_BASE(PRIV_PSP)->pthread_state)/* 获取线程状态(由psp) */
 #define PTHREAD_STATE_SET(PPTCB,STATE) (PPTCB->pthread_state = STATE)/* 设置线程状态(由ptcb*) */
 #define PTHREAD_STATE_GET(PPTCB) (PPTCB->pthread_state)/* 读取线程状态(由ptcb*) */
-#define PTHREAD_STATUS_GET(PRIV_PSP) (PTCB_BASE(PRIV_PSP)->pthread_state)/* 获取线程状态 */
 
 #define PTHREAD_NEXT_RELEASE_TICK_GET(TSCB) (((TickPending_t *)TSCB.next)->TickSuspend_Count)/* 获取计时tick */
 #define PTHREAD_NEXT_RELEASE_OVERFLOW_TICK_GET(TSCB) (((TickPending_t *)TSCB.next)->TickSuspend_OverFlowCount)/* 获取溢出tick */
@@ -28,18 +24,29 @@ LIST_HEAD_CREAT(PendListHead);/* 线程阻塞延时列表02 */
 #define OS_SCHED_DONOTHING()
 
 /* 内核变量 */
-static EL_PTHREAD_PRIO_TYPE first_start_prio = EL_MAX_LEVEL_OF_PTHREAD_PRIO;/* 第一个调度的线程的优先级 */
-EL_UINT g_TickSuspend_OverFlowCount = 0;/* 系统tick溢出单位 */
+EL_PORT_STACK_TYPE g_psp;/* 私有psp的值 */
+EL_PORT_STACK_TYPE **g_pthread_sp;/* 线程私有psp在内存中的地址 */
+static EL_UINT g_pthread_pid = 0;/* 用于线程ID分配 */
+static EL_UCHAR EL_OS_Scheduling = 0;/* 调度标志? */
+
 EL_UINT g_TickSuspend_Count = 0;/* 一单位内系统tick */
+EL_UINT g_TickSuspend_OverFlowCount = 0;/* 系统tick溢出单位 */
 static EL_PTCB_T EL_Default_Pthread;/* 系统默认线程，不可删除 */
-static void *wtfstt[EL_PTHREAD_STATUS_COUNT] = {};
 #if EL_CALC_CPU_USAGE_RATE
 EL_FLOAT CPU_UsageRate = CPU_MAX_USAGE_RATE;/* cpu使用率 */
 #endif
-
-extern EL_UINT g_critical_nesting; 
-//CalcMemUsgRtLikely
-/* 空闲线程，当其他线程都处于挂起或阻塞态时，会运行这个线程 */
+static EL_PTHREAD_PRIO_TYPE first_start_prio = EL_MAX_LEVEL_OF_PTHREAD_PRIO;/* 第一个调度的线程的优先级 */
+extern EL_UINT g_critical_nesting; /* 临界区嵌套计数 */
+/**********************************************************************
+ * 函数名称： EL_DefultPthread
+ * 功能描述： 默认线程（空闲线程）
+ * 输入参数： 无
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_DefultPthread(void)
 {
 	while(1)
@@ -57,15 +64,32 @@ void EL_DefultPthread(void)
 		PORT_PendSV_Suspend();
 	}
 }
-/* 初始化线程优先级列表 */
+/**********************************************************************
+ * 函数名称： EL_PrioListInitialise
+ * 功能描述： 初始化线程优先级列表
+ * 输入参数： 无
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_PrioListInitialise(void)
 {
     for(EL_UINT prio_ind = 0;\
 	prio_ind < EL_MAX_LEVEL_OF_PTHREAD_PRIO;prio_ind++)
 		INIT_LIST_HEAD( &PRIO_LISTS[prio_ind] );
 }
-
-/* 系统初始化 */
+/**********************************************************************
+ * 函数名称： EL_OS_Initialise
+ * 功能描述： 系统初始化
+ * 输入参数： 无
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_OS_Initialise(void)
 {
 	/* 初始化线程就绪列表 */
@@ -86,8 +110,20 @@ void EL_OS_Initialise(void)
 	MIN_PTHREAD_STACK_SIZE+EL_CFG_DEFAULT_PTHREAD_STACK_SIZE,\
 	EL_MAX_LEVEL_OF_PTHREAD_PRIO-1);
 }
-
-/* 创建线程，只支持在主线程创建 */
+/**********************************************************************
+ * 函数名称： EL_Pthread_Create
+ * 功能描述： 创建线程，只支持在主线程创建
+ * 输入参数： ptcb ：已创建的线程控制块的指针
+             name ：线程名
+			 pthread_entry ：线程入口地址
+			 pthread_stackSz ：需要分配的线程栈大小
+			 prio ：线程优先级
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 EL_RESULT_T EL_Pthread_Create(EL_PTCB_T *ptcb,const char * name,void *pthread_entry,\
 	EL_UINT pthread_stackSz,EL_PTHREAD_PRIO_TYPE prio)
 {
@@ -124,8 +160,16 @@ EL_RESULT_T EL_Pthread_Create(EL_PTCB_T *ptcb,const char * name,void *pthread_en
 		first_start_prio = ptcb->pthread_prio;
     return EL_RESULT_OK;
 }
-
-/* 启动线程调度 */
+/**********************************************************************
+ * 函数名称： EL_OS_Start_Scheduler
+ * 功能描述： 启动线程调度
+ * 输入参数： 无
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_OS_Start_Scheduler(void)
 {
 	/* 系统心跳和其他设置 */
@@ -140,7 +184,16 @@ void EL_OS_Start_Scheduler(void)
 }
 
 #if EL_CALC_PTHREAD_STACK_USAGE_RATE
-/* 计算线程栈使用率 */
+/**********************************************************************
+ * 函数名称： EL_Update_Pthread_Stack_Usage_Percentage
+ * 功能描述： 计算线程栈使用率
+ * 输入参数： 无
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_Update_Pthread_Stack_Usage_Percentage(void)
 {
 	PTCB_BASE(g_pthread_sp)->pthread_stack_usage = \
@@ -163,8 +216,16 @@ if(!list_empty(&PRIO_LISTS[pth_prio])){\
 }\
 }\
 }while(0);
-
-/* 线程切换，只在pendSV中进行 */
+/**********************************************************************
+ * 函数名称： EL_Pthread_SwicthContext
+ * 功能描述： 线程切换，只在pendSV中进行
+ * 输入参数： 无
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_Pthread_SwicthContext(void)
 {
 	/* 执行线程切换 */
@@ -180,8 +241,16 @@ void EL_Pthread_SwicthContext(void)
     /* 找出优先级最高的线程，最高优先级线程轮转执行 */
 	EL_SearchForNextReadyPthread();
 }
-
-/* 更新系统时基和阻塞释放 */
+/**********************************************************************
+ * 函数名称： EL_TickIncCount
+ * 功能描述： 更新系统时基和阻塞释放
+ * 输入参数： 无
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_TickIncCount(void)
 {
 	/* 更新系统时基 */
@@ -191,8 +260,16 @@ void EL_TickIncCount(void)
 	if(g_TickSuspend_Count < g_TickSuspend_Count_Temp)
 		g_TickSuspend_OverFlowCount ++;
 }
-
-/* 线程阻塞释放 */
+/**********************************************************************
+ * 函数名称： EL_Pthread_Pend_Release
+ * 功能描述： 线程阻塞释放
+ * 输入参数： 无
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_Pthread_Pend_Release(void)
 {
 	if(list_empty(&PendListHead)) return;
@@ -213,8 +290,16 @@ void EL_Pthread_Pend_Release(void)
 		free(p_NodeToDel);
 	}
 }
-
-/* 线程非阻塞休眠 */
+/**********************************************************************
+ * 函数名称： EL_Pthread_Sleep
+ * 功能描述： 线程非阻塞休眠
+ * 输入参数： TickToDelay ：时间片数
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_Pthread_Sleep(EL_UINT TickToDelay)
 {
 	/* 升序插入tick */
@@ -252,8 +337,16 @@ void EL_Pthread_PushToSuspendList(EL_PTCB_T * ptcb,LIST_HEAD * SuspendList)
 	list_add_tail(SuspendList,KERNEL_LIST_HEAD[EL_PTHREAD_SUSPEND]);
 	PTHREAD_STATE_SET(ptcb,EL_PTHREAD_SUSPEND);
 }
-
-/* 挂起线程，允许用户线程挂起自己或其他同级线程 */
+/**********************************************************************
+ * 函数名称： EL_Pthread_Suspend
+ * 功能描述： 挂起线程，允许用户线程挂起自己或其他同级线程
+ * 输入参数： PthreadToSuspend ：线程指针
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 EL_RESULT_T EL_Pthread_Suspend(EL_PTCB_T *PthreadToSuspend)
 {
 	EL_PTCB_T *ptcb;
@@ -305,8 +398,16 @@ EL_RESULT_T EL_Pthread_Suspend(EL_PTCB_T *PthreadToSuspend)
 	OS_Exit_Critical_Check();
 	return EL_RESULT_OK;
 }
-
-/* 解除线程挂起状态,线程自己不能解除自己的挂起态 */
+/**********************************************************************
+ * 函数名称： EL_Pthread_Resume
+ * 功能描述： 解除线程挂起状态,线程自己不能解除自己的挂起态
+ * 输入参数： PthreadToResume ：线程指针
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_Pthread_Resume(EL_PTCB_T *PthreadToResume)
 {
 	EL_PTCB_T *ptcb = PthreadToResume;
@@ -342,8 +443,16 @@ void EL_Pthread_Resume(EL_PTCB_T *PthreadToResume)
 //{
 //	
 //}
-
-/* 销毁线程,不允许销毁其他同级线程！没有返回则说明删除成功，如果有返回值必然为NULL表示删除失败 */
+/**********************************************************************
+ * 函数名称： EL_Pthread_DelSelf
+ * 功能描述： 销毁线程,不允许销毁其他同级线程！没有返回则说明删除成功，如果有返回值必然为NULL表示删除失败
+ * 输入参数： PthreadToDel ：线程指针
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 EL_PTCB_T* EL_Pthread_DelSelf(EL_PTCB_T *PthreadToDel)
 {
 	int loop;
@@ -369,8 +478,17 @@ EL_PTCB_T* EL_Pthread_DelSelf(EL_PTCB_T *PthreadToDel)
 	/* 运行到这里就是失败 */
 	return NULL;
 }
-
-/* 修改线程优先级 */
+/**********************************************************************
+ * 函数名称： EL_Pthread_Priority_Set
+ * 功能描述： 修改线程优先级
+ * 输入参数： PthreadToModify ：线程指针
+             new_prio ：优先级大小
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/05	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_Pthread_Priority_Set(EL_PTCB_T *PthreadToModify,EL_PTHREAD_PRIO_TYPE new_prio)
 {
 	EL_PTCB_T *ptcb = EL_GET_CUR_PTHREAD();
