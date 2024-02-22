@@ -1,6 +1,7 @@
 #ifndef EL_TYPE_H
 #define EL_TYPE_H
 #include "port.h"
+#include <stdlib.h>
 /* 数据类型重定义 */
 typedef unsigned char EL_UCHAR;
 typedef unsigned short EL_USHORT;

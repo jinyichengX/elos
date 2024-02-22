@@ -1,6 +1,10 @@
 #ifndef  PORT_H
 #define PORT_H
 #include "el_type.h"
+
+//extern uint32_t SystemCoreClock;
+#define CPU_CLOCK_FREQ 200000000
+
 #ifdef __NVIC_PRIO_BITS
 #define CPU_MAX_INT_PRIO_BITS	__NVIC_PRIO_BITS	/* 表示中断优先级的位数 */
 #else

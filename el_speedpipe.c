@@ -314,6 +314,10 @@ EL_RESULT_T EL_HighSpeedPipe_Push(speed_pipe_t * pipe, void * data,EL_UINT Mess_
 		    PORT_PendSV_Suspend();
 		    OS_Enter_Critical_Check();
         }
+        /* 从等待列表移除 */
+        ASSERT(!list_empty(&pipe->Waiters_wr));
+        list_del(pipe->Waiters_wr.next);
+        PTHREAD_STATE_SET(Cur_ptcb,EL_PTHREAD_READY);
     }
     /* 队列已满 */
     else if((PipeFree_field_len = EL_HighSpeedPipe_Get_Free(pipe)) < Mess_len){
@@ -332,9 +336,9 @@ EL_RESULT_T EL_HighSpeedPipe_Push(speed_pipe_t * pipe, void * data,EL_UINT Mess_
     if(!list_empty(&pipe->Waiters_rd)){
 #if (EL_HIGHSPPEDPIPE_SPIN_PEND != 0)
         ptcbToNotify = (EL_PTCB_T *)(&(pipe->Waiters_rd.next));
-        list_del(&(pipe->Waiters_rd.next));
+        list_del(pipe->Waiters_rd.next);
         PTHREAD_STATE_SET(ptcbToNotify,EL_PTHREAD_READY);
-		list_add(&ptcb->pthread_node,KERNEL_LIST_HEAD[EL_PTHREAD_READY]+ptcbToNotify->pthread_prio);
+//		list_add( (EL_PTCB_T *)pipe->Waiters_rd.next->pthread_node, KERNEL_LIST_HEAD[EL_PTHREAD_READY]+ptcbToNotify->pthread_prio);
 #else
 #endif
     }
@@ -380,6 +384,10 @@ EL_RESULT_T EL_HighSpeedPipe_Pop(speed_pipe_t * pipe, void * data,EL_UINT Mess_l
 		    PORT_PendSV_Suspend();
 		    OS_Enter_Critical_Check();
         }
+        /* 从等待列表移除 */
+        ASSERT(!list_empty(&pipe->Waiters_rd));
+        list_del(pipe->Waiters_rd.next);
+        PTHREAD_STATE_SET(Cur_ptcb,EL_PTHREAD_READY);
     }
     /* 队列已满 */
     else if((PipeFull_field_len = EL_HighSpeedPipe_Get_Free(pipe)) < Mess_len){
@@ -398,9 +406,9 @@ EL_RESULT_T EL_HighSpeedPipe_Pop(speed_pipe_t * pipe, void * data,EL_UINT Mess_l
     if(!list_empty(&pipe->Waiters_wr)){
 #if (EL_HIGHSPPEDPIPE_SPIN_PEND != 0)
         ptcbToNotify = (EL_PTCB_T *)(&(pipe->Waiters_wr.next));
-        list_del(&(pipe->Waiters_wr.next));
+        list_del(pipe->Waiters_wr.next);
         PTHREAD_STATE_SET(ptcbToNotify,EL_PTHREAD_READY);
-		list_add(&ptcb->pthread_node,KERNEL_LIST_HEAD[EL_PTHREAD_READY]+ptcbToNotify->pthread_prio);
+//		list_add(&ptcb->pthread_node,KERNEL_LIST_HEAD[EL_PTHREAD_READY]+ptcbToNotify->pthread_prio);
 #else
 #endif
     }

@@ -13,6 +13,7 @@ EL_UINT g_critical_nesting = 0;/* 临界段嵌套,防止发生下列临界段嵌
 //    // 这里执行一些需要在临界区内执行的操作
 //    taskEXIT_CRITICAL();
 //}
+
 #define PORT_PendSV_Handler PendSV_Handler
 
 extern EL_PORT_STACK_TYPE g_psp;
@@ -111,7 +112,7 @@ static int PORT_OS_TickInitialise(EL_PORT_UINT ticks)
     return (1UL);                                                   /* Reload value impossible */
   }
 
-  HWSET_V4(SYSTICK_LOAD_BASE)  = (uint32_t)(ticks - 1UL);                         /* set reload register */
+  HWSET_V4(SYSTICK_LOAD_BASE)  = (EL_UINT)(ticks - 1UL);                         /* set reload register */
   HWSET_V4(SYSTICK_VAL_BASE)   = 0UL;                                             /* Load the SysTick Counter Value */
   HWSET_V4(SYSTICK_CTRL_BASE)  = SysTick_CTRL_CLKSOURCE_Msk |
                    SysTick_CTRL_TICKINT_Msk   |
@@ -132,7 +133,7 @@ void PORT_CPU_Initialise(void)
     /* 设置Systick最低优先级 */
     PORT_Set_OS_Tick_lowest_priority();
     /* 初始化系统时钟 */
-    PORT_OS_TickInitialise(20000);
+    PORT_OS_TickInitialise(CPU_CLOCK_FREQ/1000);//除以1000就是1ms为一个时间片，除以500就是2ms为一个时间片，以此类推
 }
 
 /* 初始化线程栈 */

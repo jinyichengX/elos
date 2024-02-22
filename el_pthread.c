@@ -1,6 +1,5 @@
 #include "el_pthread.h"
 #include <string.h>
-#include "el_timer.h"
 #include "el_debug.h"
 
 /* 内核列表 */
@@ -14,8 +13,6 @@ LIST_HEAD_CREAT(PendListHead);/* 线程阻塞延时列表02 */
 #define SZ_TickPending_t sizeof(TickPending_t)
 #define PTHREAD_STATUS_SET(PRIV_PSP,STATE) (PTCB_BASE(PRIV_PSP)->pthread_state = STATE)/* 设置线程状态(由psp) */
 #define PTHREAD_STATUS_GET(PRIV_PSP) (PTCB_BASE(PRIV_PSP)->pthread_state)/* 获取线程状态(由psp) */
-#define PTHREAD_STATE_SET(PPTCB,STATE) (PPTCB->pthread_state = STATE)/* 设置线程状态(由ptcb*) */
-#define PTHREAD_STATE_GET(PPTCB) (PPTCB->pthread_state)/* 读取线程状态(由ptcb*) */
 
 #define PTHREAD_NEXT_RELEASE_TICK_GET(TSCB) (((TickPending_t *)TSCB.next)->TickSuspend_Count)/* 获取计时tick */
 #define PTHREAD_NEXT_RELEASE_OVERFLOW_TICK_GET(TSCB) (((TickPending_t *)TSCB.next)->TickSuspend_OverFlowCount)/* 获取溢出tick */

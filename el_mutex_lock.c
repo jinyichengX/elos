@@ -1,6 +1,6 @@
 #include "el_mutex_lock.h"
 #include "el_pthread.h"
-
+#include <stdlib.h>
 /* 设置锁的所有者 */
 #define SET_MUTEX_OWNER(P_MUT,P_PTCB)\
 	   (P_MUT->Owner = P_PTCB)
@@ -232,7 +232,6 @@ EL_RESULT_T EL_MutexLock_Deinit(mutex_lock_t* lock)
 		return EL_RESULT_ERR;
 	/* 先获取锁 */
 	EL_MutexLock_Take(lock);
-	EL_Mutex_Lock_Init(lock);
-	lock->Lock_attr |= MUTEX_LOCK_INVALID;
+	EL_Mutex_Lock_Init(lock,INVALID);
 	return EL_RESULT_OK;
 }

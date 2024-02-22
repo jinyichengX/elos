@@ -2,9 +2,8 @@
 #define EL_PTHREAD_H
 
 #include "elightOS_config.h"
-#include "el_list.h"
+#include "el_klist.h"
 #include "el_type.h"
-#include "el_phymm.h"
 #include "port.h"
 
 #ifndef CPU_MAX_USAGE_RATE
@@ -51,7 +50,7 @@ typedef enum{
 /* 线程控制块 */
 typedef struct EL_PTHREAD_CONTROL_BLOCK
 {
-	LIST_HEAD_CREAT(pthread_node);
+	struct list_head pthread_node;
     EL_CHAR pthread_name[EL_PTHREAD_NAME_MAX_LEN];/* 线程名 */
     EL_PTHREAD_PRIO_TYPE pthread_prio;/* 线程优先级 */
     EL_PORT_STACK_TYPE *pthread_sp;/* 动态线程栈 */
@@ -68,7 +67,7 @@ typedef struct EL_PTHREAD_CONTROL_BLOCK
 
 typedef struct EL_OS_AbsolutePendingTickCount
 {
-	LIST_HEAD_CREAT(TickPending_Node);
+	struct list_head TickPending_Node;
 	EL_UINT TickSuspend_OverFlowCount;/* 系统tick溢出单位 */
 	EL_UINT TickSuspend_Count;/* 一单位内系统tick */
 	EL_PTCB_T * Pthread;/* 被延时阻塞的线程 */
@@ -77,7 +76,7 @@ typedef struct EL_OS_AbsolutePendingTickCount
 
 typedef struct EL_OS_SuspendStruct
 {
-	LIST_HEAD_CREAT(Suspend_Node);
+	struct list_head Suspend_Node;
 	EL_PTCB_T * Pthread;/* 被挂起的线程 */
 	EL_UCHAR Suspend_nesting;/* 挂起嵌套计数 */
 	void * PendingType;/* 是否正处于阻塞状态被挂起 */
@@ -88,7 +87,8 @@ typedef struct EL_OS_SuspendStruct
 #define PTCB_BASE(PRIV_PSP) ( (EL_PTCB_T *)((EL_PORT_STACK_TYPE)PRIV_PSP-STATICSP_POS) )/* 线程控制块基地址（指针） */
 #define EL_GET_CUR_PTHREAD() PTCB_BASE(g_pthread_sp)/* 获取当前线程控制块（指针） */
 #define SZ_Suspend_t sizeof(Suspend_t)
-
+#define PTHREAD_STATE_SET(PPTCB,STATE) (PPTCB->pthread_state = STATE)/* 设置线程状态(由ptcb*) */
+#define PTHREAD_STATE_GET(PPTCB) (PPTCB->pthread_state)/* 读取线程状态(由ptcb*) */
 extern EL_RESULT_T EL_Pthread_Create(EL_PTCB_T *ptcb,const char * name,void *pthread_entry,EL_UINT pthread_stackSz,EL_PTHREAD_PRIO_TYPE pthread_prio);
 extern void EL_OS_Start_Scheduler(void);
 extern void EL_PrioListInitialise(void);
@@ -96,7 +96,7 @@ extern void EL_OS_Initialise(void);
 extern void EL_Pthread_Sleep(EL_UINT TickToDelay);
 extern EL_RESULT_T EL_Pthread_Suspend(EL_PTCB_T *PthreadToSuspend);
 extern void EL_Pthread_Resume(EL_PTCB_T *PthreadToResume);
-extern void EL_Pthread_PushToSuspendList(EL_PTCB_T * ptcb,LIST_HEAD * SuspendList);
+extern void EL_Pthread_PushToSuspendList(EL_PTCB_T * ptcb,struct list_head * SuspendList);
 extern void EL_Pthread_Priority_Set(EL_PTCB_T *PthreadToModify,EL_PTHREAD_PRIO_TYPE new_prio);
 extern void EL_TickIncCount(void);
 extern void EL_Pthread_Pend_Release(void);

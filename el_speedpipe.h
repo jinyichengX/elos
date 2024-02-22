@@ -1,12 +1,12 @@
 #ifndef EL_SPEEDPIPE_H
 #define EL_SPEEDPIPE_H
 #include "el_type.h"
-#include "el_list.h"
 #include "el_pthread.h"
 
 /* List of flags */
-#define LWRB_FLAG_READ_ALL  ((uint16_t)0x0001)
-#define LWRB_FLAG_WRITE_ALL ((uint16_t)0x0001)
+#define LWRB_FLAG_READ_ALL  ((EL_USHORT)0x0001)
+#define LWRB_FLAG_WRITE_ALL ((EL_USHORT)0x0001)
+
 typedef enum {
     LWRB_EVT_READ,  /*!< Read event */
     LWRB_EVT_WRITE, /*!< Write event */
