@@ -1,6 +1,7 @@
 #include "el_pthread.h"
-#include <string.h>
 #include "el_debug.h"
+#include "el_list_sort.h"
+#include <string.h>
 
 /* 内核列表 */
 LIST_HEAD_CREAT(*KERNEL_LIST_HEAD[EL_PTHREAD_STATUS_COUNT]);/* 内核列表指针 */
@@ -101,11 +102,12 @@ void EL_OS_Initialise(void)
 	KERNEL_LIST_HEAD[EL_PTHREAD_READY] = PRIO_LISTS;
 	KERNEL_LIST_HEAD[EL_PTHREAD_PENDING] = &PendListHead;
 	KERNEL_LIST_HEAD[EL_PTHREAD_SUSPEND] = &PthreadToSuspendListHead;
-	g_critical_nesting = 0;
 	/* 创建空闲线程 */
 	EL_Pthread_Create(&EL_Default_Pthread,"IDLE",EL_DefultPthread,\
 	MIN_PTHREAD_STACK_SIZE+EL_CFG_DEFAULT_PTHREAD_STACK_SIZE,\
 	EL_MAX_LEVEL_OF_PTHREAD_PRIO-1);
+	/* 内核变量初始化 */
+	g_critical_nesting = 0;
 }
 /**********************************************************************
  * 函数名称： EL_Pthread_Create
@@ -321,7 +323,7 @@ void EL_Pthread_Sleep(EL_UINT TickToDelay)
 	PendingObj->Pthread->block_holder = (void *)(&PendingObj->TickPending_Node);
 	
 	/* 切换状态并放入阻塞列表 */
-	list_add_inorder(&PendingObj->TickPending_Node,KERNEL_LIST_HEAD[EL_PTHREAD_PENDING]);/* 升序放入阻塞延时列表 */
+	EL_Klist_InsertSorted(&PendingObj->TickPending_Node,KERNEL_LIST_HEAD[EL_PTHREAD_PENDING]);/* 升序放入阻塞延时列表 */
 	OS_Exit_Critical_Check();
 	PTHREAD_STATE_SET(PendingObj->Pthread,EL_PTHREAD_PENDING);
 	/* 执行一次线程切换 */
@@ -355,13 +357,15 @@ EL_RESULT_T EL_Pthread_Suspend(EL_PTCB_T *PthreadToSuspend)
 	else if(PthreadToSuspend->PendFlags & EL_PTHREAD_SPEEDPIPE_WAIT){/* 待添加 */;}
 	/* 将其放入线程挂起列表 */
 	OS_Enter_Critical_Check();/* 避免多个线程使用挂起列表 */
-	/* 不允许挂起空闲线程 */
-	if(ptcb == &EL_Default_Pthread) return EL_RESULT_ERR;
-	if(ptcb->pthread_state == EL_PTHREAD_SUSPEND) return EL_RESULT_ERR;/* 已经挂起，能否改为嵌套机制 */
+	/* 不允许挂起空闲线程和重复挂起 */
+	if((ptcb == &EL_Default_Pthread) || (ptcb->pthread_state == EL_PTHREAD_SUSPEND)){
+		OS_Exit_Critical_Check();
+		return EL_RESULT_ERR;
+	}
 	/* 如果挂起的是其他线程 */
 	if(PTHREAD_STATE_GET(ptcb) == EL_PTHREAD_DEAD){
 		OS_Exit_Critical_Check();/* 如果是死亡线程直接退出 */
-		return EL_RESULT_OK;
+		return EL_RESULT_ERR;
 	}
 	if (NULL == (SuspendObj = (Suspend_t *)malloc(SZ_Suspend_t))){
 		OS_Exit_Critical_Check();
@@ -397,7 +401,7 @@ EL_RESULT_T EL_Pthread_Suspend(EL_PTCB_T *PthreadToSuspend)
 }
 /**********************************************************************
  * 函数名称： EL_Pthread_Resume
- * 功能描述： 解除线程挂起状态,线程自己不能解除自己的挂起态
+ * 功能描述： 解除线程挂起状态
  * 输入参数： PthreadToResume ：线程指针
  * 输出参数： 无
  * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
@@ -408,7 +412,8 @@ EL_RESULT_T EL_Pthread_Suspend(EL_PTCB_T *PthreadToSuspend)
 void EL_Pthread_Resume(EL_PTCB_T *PthreadToResume)
 {
 	EL_PTCB_T *ptcb = PthreadToResume;
-	if(ptcb == EL_GET_CUR_PTHREAD()) return;
+	/* 线程自己不能解除自己的挂起态 */
+	ASSERT(ptcb != EL_GET_CUR_PTHREAD());
 	OS_Enter_Critical_Check();
 	/* 如果不是已经挂起的线程，退出 */
 	if(ptcb->pthread_state != EL_PTHREAD_SUSPEND) {
