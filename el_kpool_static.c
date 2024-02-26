@@ -3,11 +3,12 @@
 #include "port.h"
 #include <stdio.h>
 #include <string.h>
-/* 内核对象内存池 */
+
+/* 分配内核对象的静态内存池 */
 EL_UCHAR EL_Pthread_Pendst_Pool[EL_Pthread_Pendst_Pool_Size];
 EL_UCHAR EL_Pthread_Suspendst_Pool[EL_Pthread_Suspendst_Pool_Size];
 
-/* 对齐方式 */
+/* 内存池对齐方式 */
 #if KPOOL_BYTE_ALIGNMENT == 16
 #define KPOOL_BYTE_ALIGNMENT_MASK    ( 0x000f )
 #elif KPOOL_BYTE_ALIGNMENT == 8
@@ -22,8 +23,19 @@ EL_UCHAR EL_Pthread_Suspendst_Pool[EL_Pthread_Suspendst_Pool_Size];
 #define EL_KPOOL_BLKSZ_ALIGNED(BLK_SZ) ( (sizeof(LIST_HEAD) + BLK_SZ)+(KPOOL_BYTE_ALIGNMENT - 1) )\
                                         & ~( (EL_UINT)KPOOL_BYTE_ALIGNMENT_MASK )
 #define EL_POOL_BLOCK_NODE_ADDR(POBJ)  ((EL_UCHAR *)POBJ-sizeof(LIST_HEAD))
-
-/* 静态池初始化 */
+	
+/**********************************************************************
+ * 函数名称： EL_stKpoolInitialise
+ * 功能描述： 静态池初始化
+ * 输入参数： PoolSurf ：静态内存池池面指针
+			 PoolSize ：静态内存池池深
+			 PerBlkSz ：池中每个静态内存块大小
+ * 输出参数： 无
+ * 返 回 值： EL_RESULT_OK/EL_RESULT_ERR
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/25	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 EL_RESULT_T EL_stKpoolInitialise(void * PoolSurf,EL_UINT PoolSize,EL_UINT PerBlkSz)
 {
     EL_KPOOL_INFO_T * pKpoolInfo= (EL_KPOOL_INFO_T *)PoolSurf;
@@ -58,8 +70,16 @@ EL_RESULT_T EL_stKpoolInitialise(void * PoolSurf,EL_UINT PoolSize,EL_UINT PerBlk
     OS_Exit_Critical_Check();
     return EL_RESULT_OK;
 }
-
-/* 从指定静态池分配内存块 */
+/**********************************************************************
+ * 函数名称： EL_stKpoolBlockAlloc
+ * 功能描述： 从指定静态池分配内存块
+ * 输入参数： PoolSurf ：静态内存池
+ * 输出参数： 无
+ * 返 回 值： 可用静态内存块地址
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/25	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void * EL_stKpoolBlockAlloc(void *PoolSurf)
 {
     if(PoolSurf == NULL) return NULL;
@@ -80,8 +100,17 @@ void * EL_stKpoolBlockAlloc(void *PoolSurf)
     OS_Exit_Critical_Check();
     return (void *)pBlkToAlloc;
 }
-
-/* 从指定静态池回收内存块 */
+/**********************************************************************
+ * 函数名称： EL_stKpoolBlockFree
+ * 功能描述： 从指定静态池回收内存块
+ * 输入参数： PoolSurf ：静态内存池
+			 pBlkToFree ：需要释放的静态内存块首地址
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/25	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_stKpoolBlockFree(void *PoolSurf,void *pBlkToFree)
 {
     EL_KPOOL_INFO_T * pKpoolInfo= (EL_KPOOL_INFO_T *)PoolSurf;
@@ -96,8 +125,17 @@ void EL_stKpoolBlockFree(void *PoolSurf,void *pBlkToFree)
 
     OS_Exit_Critical_Check();
 }
-
-/* 清零静态池中的某一内存块 */
+/**********************************************************************
+ * 函数名称： EL_stKpoolClear
+ * 功能描述： 清零静态池中的某一内存块
+ * 输入参数： PoolSurf ：静态内存池
+			 pBlk ：需要清零内存的静态内存块首地址
+ * 输出参数： 无
+ * 返 回 值： 无
+ * 修改日期        版本号     修改人	      修改内容
+ * -----------------------------------------------
+ * 2024/02/25	    V1.0	  jinyicheng	      创建
+ ***********************************************************************/
 void EL_stKpoolClear(void * PoolSurf, void * pBlk)
 {
     EL_KPOOL_INFO_T *pKpoolInfo = (EL_KPOOL_INFO_T *)PoolSurf;
