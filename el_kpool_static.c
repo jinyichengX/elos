@@ -17,6 +17,8 @@ EL_UCHAR EL_Pthread_Suspendst_Pool[EL_Pthread_Suspendst_Pool_Size];
 #define KPOOL_BYTE_ALIGNMENT_MASK    ( 0x0003 )
 #endif
 
+/* 检查静态内存池合法性 */
+#define IS_POOL_VALID(P) P->TotalBlockNum
 /* 检查内存对齐宏 */
 #define IS_KPOOL_ALIGNED(BASE) (((EL_UINT)BASE & KPOOL_BYTE_ALIGNMENT_MASK) == 0)
 /* 将内核对象块大小向上作4字节对齐 */
@@ -46,6 +48,7 @@ EL_RESULT_T EL_stKpoolInitialise(void * PoolSurf,EL_UINT PoolSize,EL_UINT PerBlk
         return EL_RESULT_ERR;
     /* 检查对齐，编译器应该会自动对齐 */
     if (!IS_KPOOL_ALIGNED(PoolSurf)) return EL_RESULT_ERR;
+	
     OS_Enter_Critical_Check();
     /* 静态内存池控制头初始化 */
     pKpoolInfo->PerBlockSize = EL_KPOOL_BLKSZ_ALIGNED(PerBlkSz);
@@ -66,8 +69,8 @@ EL_RESULT_T EL_stKpoolInitialise(void * PoolSurf,EL_UINT PoolSize,EL_UINT PerBlk
         blk_list += pKpoolInfo->PerBlockSize;
         list_add_tail((LIST_HEAD *)blk_list,&pKpoolInfo->ObjBlockList);
     }
-
     OS_Exit_Critical_Check();
+	
     return EL_RESULT_OK;
 }
 /**********************************************************************
@@ -85,7 +88,8 @@ void * EL_stKpoolBlockAlloc(void *PoolSurf)
     if(PoolSurf == NULL) return NULL;
     EL_KPOOL_INFO_T * pKpoolInfo= (EL_KPOOL_INFO_T *)PoolSurf;
     EL_UCHAR *pBlkToAlloc;
-
+	ASSERT(IS_POOL_VALID(pKpoolInfo));
+	
     OS_Enter_Critical_Check();
     if(pKpoolInfo->TotalBlockNum == pKpoolInfo->UsingBlockCnt){
         ASSERT(list_empty(&pKpoolInfo->ObjBlockList));
@@ -96,8 +100,8 @@ void * EL_stKpoolBlockAlloc(void *PoolSurf)
 	pBlkToAlloc = (EL_UCHAR *)(pKpoolInfo->ObjBlockList.next + 1); 
     list_del(pKpoolInfo->ObjBlockList.next);
     pKpoolInfo->UsingBlockCnt ++;
-
     OS_Exit_Critical_Check();
+	
     return (void *)pBlkToAlloc;
 }
 /**********************************************************************
@@ -116,13 +120,12 @@ void EL_stKpoolBlockFree(void *PoolSurf,void *pBlkToFree)
     EL_KPOOL_INFO_T * pKpoolInfo= (EL_KPOOL_INFO_T *)PoolSurf;
     if((PoolSurf == NULL) || (pBlkToFree == NULL)) return;
     LIST_HEAD * pblk;
-
+	ASSERT(IS_POOL_VALID(pKpoolInfo));
+	
     OS_Enter_Critical_Check();
-
     pblk = (LIST_HEAD *)EL_POOL_BLOCK_NODE_ADDR(pBlkToFree);
     list_add_tail(pblk,&pKpoolInfo->ObjBlockList);
     pKpoolInfo->UsingBlockCnt --;
-
     OS_Exit_Critical_Check();
 }
 /**********************************************************************
