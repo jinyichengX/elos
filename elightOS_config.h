@@ -21,4 +21,7 @@
 /* 高速队列自旋阻塞模式 */
 #define EL_HIGHSPPEDPIPE_SPIN_PEND 1
 
+/* 最大非阻塞等待时间片长度 */
+#define EL_MAX_TICKS_TO_WAIT 0XFFFFFFFF
+
 #endif

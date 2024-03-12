@@ -126,10 +126,13 @@ void * EL_stKpoolBlockAlloc(void *PoolSurf,EL_UINT TicksToWait)
 void * EL_stKpoolBlockAllocWait(void *PoolSurf,EL_UINT TicksToWait)
 {
     if(PoolSurf == NULL) return NULL;
+    ASSERT(IS_POOL_VALID(pKpoolInfo));
     EL_KPOOL_INFO_T * pKpoolInfo= (EL_KPOOL_INFO_T *)PoolSurf;
     EL_PTCB_T *Cur_ptcb = EL_GET_CUR_PTHREAD();
     EL_UCHAR *pBlkToAlloc;
-	ASSERT(IS_POOL_VALID(pKpoolInfo));
+    EL_UINT MaxUpperLimitTick = g_TickSuspend_Count + TicksToWait;
+    EL_UINT MaxUpperLimitTick_OverFlow = g_TickSuspend_OverFlowCount ;
+    if(MaxUpperLimitTick < g_TickSuspend_Count) MaxUpperLimitTick_OverFlow ++;
 
     OS_Enter_Critical_Check();
     /* 等待空闲内存池，这里只能自旋等待，因为多个内存池与高速队列不同，是由多线程共享的 */
@@ -139,11 +142,16 @@ void * EL_stKpoolBlockAllocWait(void *PoolSurf,EL_UINT TicksToWait)
             OS_Exit_Critical_Check();
             return NULL;
         }
-        else if(TicksToWait != 0xffffffff){
+        else if(TicksToWait != EL_MAX_TICKS_TO_WAIT){
             OS_Exit_Critical_Check();
-            EL_Pthread_Sleep(TicksToWait);/* 线程休眠 */
+            /* 唤醒调度器 */
+            PORT_PendSV_Suspend();
             OS_Enter_Critical_Check();
-            TicksToWait = (EL_UINT)0;
+            /* 更新需要继续等待的时间片长度 */
+            TicksToWait = ((((g_TickSuspend_OverFlowCount == MaxUpperLimitTick_OverFlow)&&\
+		    (g_TickSuspend_Count >= MaxUpperLimitTick))\
+		    ||(g_TickSuspend_OverFlowCount > MaxUpperLimitTick_OverFlow)))?((EL_UINT)0):\
+            ((EL_UINT)(MaxUpperLimitTick - g_TickSuspend_Count));
             continue;
         }
         /* 将线程放入等待列表，设置挂起态 */
@@ -185,8 +193,8 @@ void EL_stKpoolBlockFree(void *PoolSurf,void *pBlkToFree)
     pblk = (LIST_HEAD *)EL_POOL_BLOCK_NODE_ADDR(pBlkToFree);
     list_add_tail(pblk,&pKpoolInfo->ObjBlockList);
     pKpoolInfo->UsingBlockCnt --;
-    /* 唤醒所有请求内存池的线程 */
-    while(!list_empty(&pKpoolInfo->WaitersToTakePool)){
+    /* 唤醒第一个因请求内存池而被阻塞的线程 */
+    if(!list_empty(&pKpoolInfo->WaitersToTakePool)){
         list_del(pKpoolInfo->WaitersToTakePool.next);
         /* 添加至就绪列表 */
         list_add_tail(&Cur_ptcb->pthread_node,\
