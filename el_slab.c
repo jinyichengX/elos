@@ -49,12 +49,12 @@ void ELOS_SlabSDisprBitmapFindBitAndClear(  )
 /* 转移至深色节点，返回+1 */
 EL_CHAR ELOS_SlabColorConvDeepIdxTake(el_SlabDispr_t * pSlabDispr)
 {
-    return pSlabDispr
+    return 0;
 }
 /* 浅色节点，返回-1 */
 EL_CHAR ELOS_SlabColorConvSallowIdxTake(el_SlabDispr_t * pSlabDispr)
 {
-    return 
+    return 0; 
 }
 void SlabZoneResize(EL_UINT index,EL_UINT size)
 {
@@ -181,7 +181,7 @@ void * ELOS_SlabObjAlloc(el_SlabDispr_t * pSlabDispr)
     if( pSlabDispr == NULL ) return NULL;
 
     OS_Enter_Critical_Check();
-    ASSERT( pSlabDispr->SlabObjCnt >= pSlabDispr->SlabObjUsed );
+    ASSERT( pSlabDispr->SlabObjCnt > pSlabDispr->SlabObjUsed );
     /* 从位图表中找出 */
     ObjIndex = (pSlabDispr->SlabObjCnt == pSlabDispr->SlabObjUsed)?0:\
                 ELOS_SlabSDisprBitmapFindBitAndSet(NULL);
@@ -210,15 +210,36 @@ void ELOS_SlabFreeObject(el_SlabDispr_t * pSlabDispr, void *pObj)
 void *ELOS_SlabMemAlloc(void * SlabPoolSurf,EL_UINT NeedAllocSize)
 {
     el_SlabPoolHead_t *SlabHead = (el_SlabPoolHead_t *)SlabPoolSurf;
-    if(SlabPoolSurf== NULL)||(NeedAllocSize == 0) return;
+    LIST_HEAD_CREAT( *pSlabZoneToAllocHeadNode );
+    void * pObj = NULL;
+    if( (SlabPoolSurf== NULL) || (NeedAllocSize == 0) ) return NULL;
 
     /* 采用最小适配算法 */
     for(int s_idx = 0 ; s_idx < ELOS_SLAB_CHUNK_MAX_LEVEL; s_idx++){
         SlabHead += s_idx;
+        /* 保证内存使用率大于50% */
+        if( (SlabHead->SlabObjSize >= NeedAllocSize) &&\
+             (SlabHead->SlabObjSize <= 2*NeedAllocSize) ){
+            /* 优先从黄链分配，接着是绿链，不够就分配新的slab区块 */
+            pSlabZoneToAllocHeadNode = &SlabHead->ckYellowListHead;
+            if( list_empty( pSlabZoneToAllocHeadNode ) ){
+                /* 黄链没有就从绿链分配 */
+                pSlabZoneToAllocHeadNode = &SlabHead->ckGreenListHead;
+                if( list_empty( pSlabZoneToAllocHeadNode ) ){
+                    /* 没有绿链就从系统内存申请 */
+                    if((EL_UINT)EL_RESULT_ERR ==  ELOS_SlabGroupAdd(SlabHead, SlabHead->SlabObjSize)){
+                        return (void *)0;
+                    }else{
+                        pObj = ELOS_SlabObjAlloc( SlabHead->ckGreenListHead );
+                        ASSERT( pObj != (void *)0 );
+                        return (void *)pObj;
+                    }
+                }
+            }
+            pObj = ELOS_SlabObjAlloc( SlabHead->ckYellowListHead );
+        }else continue;
     }
-    /* 优先从黄链分配，接着是绿链，不够就分配新的slab区块 */
-    /* 这里待改进 */
-    return ELOS_SlabObjAlloc( SlabHead->ckYellowListHead );
+    return (void *)pObj;
 }
 
 /* 释放一个obj */
